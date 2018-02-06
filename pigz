@@ -1,0 +1,408 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Sandbox
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            //number of iterations
+            int x = 100000;
+
+            //create the test directories
+            Directory.CreateDirectory(@"C:\EVLogs\GZ vs Text Peformance\testgzs");
+            Directory.CreateDirectory(@"C:\EVLogs\GZ vs Text Peformance\testtxt");
+
+            //store the diagnostics
+            List<IODiagnostics> diagnostics = new List<IODiagnostics>();
+            diagnostics.Add(new IODiagnostics("GZip"));
+            diagnostics.Add(new IODiagnostics("TXT"));
+
+            //get a string to write (https://echovoice.com) at the time of this post
+            string html = getEVHTML();
+
+            //validate the html is not null or empty
+            if (!string.IsNullOrWhiteSpace(html))
+            {
+                //write GZ to file x times
+                Performance performance = new Performance();
+                performance.start();
+                Stopwatch timer = Stopwatch.StartNew();
+                for (int i = 0; i < x; i++)
+                    WriteGZipStream(html, i);
+                timer.Stop();
+                diagnostics[0].write_elapsed_milliseconds = timer.ElapsedMilliseconds;
+                performance.stop();
+                while (performance.isAlive)
+                    Thread.Sleep(10);
+                diagnostics[0].write_performance = performance;
+
+                //reset the stopwatch
+                performance = new Performance();
+                performance.start();
+                timer.Reset();
+                timer.Start();
+
+                //read all GZ files
+                for (int i = 0; i < x; i++)
+                    ReadGZipStream(i);
+                timer.Stop();
+                diagnostics[0].read_elapsed_milliseconds = timer.ElapsedMilliseconds;
+                performance.stop();
+                while (performance.isAlive)
+                    Thread.Sleep(10);
+                diagnostics[0].read_performance = performance;
+
+                //check file length
+                diagnostics[0].file_length = new FileInfo(@"C:\EVLogs\GZ vs Text Peformance\testgzs\gz1.gz").Length;
+
+                //write TXT to file x times
+                performance = new Performance();
+                performance.start();
+                timer.Reset();
+                timer.Start();
+                for (int i = 0; i < x; i++)
+                    writeTextFile(html, i);
+                timer.Stop();
+                diagnostics[1].write_elapsed_milliseconds = timer.ElapsedMilliseconds;
+
+                performance.stop();
+                while (performance.isAlive)
+                    Thread.Sleep(10);
+                diagnostics[1].write_performance = performance;
+
+                //reset
+                performance = new Performance();
+                performance.start();
+                timer.Reset();
+                timer.Start();
+
+                //read all TXT files
+                for (int i = 0; i < x; i++)
+                    readTextFile(i);
+                timer.Stop();
+                diagnostics[1].read_elapsed_milliseconds = timer.ElapsedMilliseconds;
+                performance.stop();
+                while (performance.isAlive)
+                    Thread.Sleep(10);
+                diagnostics[1].read_performance = performance;
+
+                //check file length
+                diagnostics[1].file_length = new FileInfo(@"C:\EVLogs\GZ vs Text Peformance\testtxt\txt1.txt").Length;
+
+                //get performance averages
+                diagnostics[0].avg_write_RAM_performance = diagnostics[0].write_performance.getRAMperformance();
+                diagnostics[0].avg_write_CPU_performance = diagnostics[0].write_performance.getCPUperformance();
+                diagnostics[0].avg_read_RAM_performance = diagnostics[0].read_performance.getRAMperformance();
+                diagnostics[0].avg_read_CPU_performance = diagnostics[0].read_performance.getCPUperformance();
+                diagnostics[1].avg_write_RAM_performance = diagnostics[1].write_performance.getRAMperformance();
+                diagnostics[1].avg_write_CPU_performance = diagnostics[1].write_performance.getCPUperformance();
+                diagnostics[1].avg_read_RAM_performance = diagnostics[1].read_performance.getRAMperformance();
+                diagnostics[1].avg_read_CPU_performance = diagnostics[1].read_performance.getCPUperformance();
+
+                //write the results
+                using (StreamWriter sw = new StreamWriter(string.Format("results_x{0}.txt", x)))
+                {
+                    sw.WriteLine(string.Format("File Read/Write Operation Times for {0} Cycles", x));
+                    sw.WriteLine();
+                    sw.WriteLine("type\tlength [B]\twrite [ms]\tread [ms]\tavg write RAM\tavg write CPU\tavg read RAM\tavg read CPU");
+                    sw.WriteLine("---------------------------------------------------------------------------------------------------------------------------------");
+                    sw.WriteLine(diagnostics[0].ToString());
+                    sw.WriteLine(diagnostics[1].ToString());
+                }
+
+                //write the points for graphical display
+                writePerformancePoints(string.Format("GZ_Write_{0}.csv", x), diagnostics[0].write_performance);
+                writePerformancePoints(string.Format("GZ_Read_{0}.csv", x), diagnostics[0].read_performance);
+                writePerformancePoints(string.Format("TXT_Write_{0}.csv", x), diagnostics[1].write_performance);
+                writePerformancePoints(string.Format("TXT_Read_{0}.csv", x), diagnostics[1].read_performance);
+
+                //clean-up
+                cleanup(@"C:\EVLogs\GZ vs Text Peformance\testgzs");
+                cleanup(@"C:\EVLogs\GZ vs Text Peformance\testtxt");
+            }
+        }
+
+        private static void WriteGZipStream(string text, int index)
+        {
+            //create and open GZStream
+            using (GZipStream stream = new GZipStream(File.OpenWrite(string.Format(@"C:\EVLogs\GZ vs Text Peformance\testgzs\gz{0}.gz", index)), CompressionMode.Compress))
+            {
+                //write to the stream using streamwriter
+                using (StreamWriter sw = new StreamWriter(stream))
+                    sw.Write(text);
+            }
+        }
+
+        private static void ReadGZipStream(int index)
+        {
+            //open the file and decrompress
+            using (GZipStream stream = new GZipStream(File.OpenRead(string.Format(@"C:\EVLogs\GZ vs Text Peformance\testgzs\gz{0}.gz", index)), CompressionMode.Decompress))
+            {
+                //use streamreader to read from file
+                using (StreamReader sr = new StreamReader(stream))
+                {
+                    string line;
+                    while ((line = sr.ReadLine()) != null)
+                    {
+                        //don't do anything with the lines
+                    }
+                }
+            }
+        }
+
+        private static void writeTextFile(string text, int index)
+        {
+            //create file open stream and write using streamwriter
+            using (StreamWriter sw = new StreamWriter(string.Format(@"C:\EVLogs\GZ vs Text Peformance\testtxt\txt{0}.txt", index), true))
+                sw.WriteLine(text);
+        }
+
+        private static void readTextFile(int index)
+        {
+            //open the file and read using streamreader
+            using (StreamReader sr = new StreamReader(string.Format(@"C:\EVLogs\GZ vs Text Peformance\testtxt\txt{0}.txt", index)))
+            {
+                string line;
+                while ((line = sr.ReadLine()) != null)
+                {
+                    //don't do anything with the lines
+                }
+            }
+        }
+
+        private static string getEVHTML()
+        {
+            //make sure the file exists
+            if (File.Exists("index.html"))
+            {
+                //use stringbuilder to build the HTML string
+                StringBuilder sb = new StringBuilder();
+
+                //read from the html file
+                using (StreamReader r = new StreamReader("index.html"))
+                {
+                    //store the line and append to the stringbuilder
+                    string line;
+                    while ((line = r.ReadLine()) != null)
+                        sb.Append(line);
+                }
+                return sb.ToString();
+            }
+            //file doesn't exist, return null
+            return null;
+        }
+
+        private static void cleanup(string path)
+        {
+            //get the files, delete the files, remove the directory
+            string[] files = Directory.GetFiles(path);
+            for (int i = 0; i < files.Length; i++)
+                File.Delete(files[i]);
+            Directory.Delete(path);
+        }
+
+        private static void convertToGZip()
+        {
+            //convert files in this directory to GZips
+            string[] files = Directory.GetFiles(Directory.GetCurrentDirectory());
+
+            //verify there are files
+            if (files != null && files.Length > 0)
+            {
+                //iterate over the files
+                for (int i = 0; i < files.Length; i++)
+                {
+                    //create a temporary file to dump compressed data into
+                    string temp_file = Path.GetTempFileName();
+
+                    //open a regular streamreader for the current text file
+                    using (StreamReader reader = new StreamReader(files[i]))
+                    {
+                        //create stream for new file (currently in temp dir)
+                        using (GZipStream stream = new GZipStream(File.OpenWrite(temp_file), CompressionMode.Compress))
+                        {
+                            //write to the temporary file
+                            using (StreamWriter writer = new StreamWriter(stream))
+                            {
+                                //read from the original and copy into the temporary file
+                                string line;
+                                while ((line = reader.ReadLine()) != null)
+                                {
+                                    writer.WriteLine(line);
+                                }
+                            }
+                        }
+                    }
+
+                    //delete the original file
+                    File.Delete(files[i]);
+
+                    //move the temp file to the original file location (note: this renames the file as well, will retain same extension as previous)
+                    File.Move(temp_file, files[i]);
+                }
+            }
+        }
+
+        private static void writePerformancePoints(string file_name, Performance performance)
+        {
+            //validate the input
+            if (!string.IsNullOrWhiteSpace(file_name) && performance != null && performance.performance != null && performance.performance.Count > 0)
+            {
+                //create a stream writer
+                using (StreamWriter writer = new StreamWriter(file_name))
+                {
+                    writer.WriteLine("Seconds,RAM [MB],CPU [%]");
+
+                    //iterate and add to the file
+                    for (int i = 0; i < performance.performance.Count; i++)
+                    {
+                        writer.WriteLine(i + "," + performance.performance[i].ToString());
+                    }
+                }
+            }
+        }
+    }
+
+    public class IODiagnostics
+    {
+        public IODiagnostics(string file_type)
+        {
+            this.file_type = file_type;
+        }
+
+        public string file_type { get; set; }
+        public long file_length { get; set; }
+        public long write_elapsed_milliseconds { get; set; }
+        public long read_elapsed_milliseconds { get; set; }
+        public double avg_write_RAM_performance { get; set; }
+        public double avg_write_CPU_performance { get; set; }
+        public double avg_read_RAM_performance { get; set; }
+        public double avg_read_CPU_performance { get; set; }
+        public Performance write_performance { get; set; }
+        public Performance read_performance { get; set; }
+
+        /// <summary>
+        /// Override ToString to print the results to the console
+        /// </summary>
+        public override string ToString()
+        {
+            return this.file_type + "\t" + this.file_length + "\t\t" + this.write_elapsed_milliseconds + "\t\t" + this.read_elapsed_milliseconds + "\t\t" + this.avg_write_RAM_performance + "\t\t" + this.avg_write_CPU_performance + "\t\t" + this.avg_read_RAM_performance + "\t\t" + this.avg_read_CPU_performance;
+        }
+    }
+
+    public class Performance
+    {
+        public Performance()
+        {
+            performance_thread = new Thread(new ThreadStart(getPerformance));
+            performance_thread.Priority = ThreadPriority.Lowest;
+            performance_thread.Start();
+
+            while (canRun)
+                Thread.Sleep(10);
+
+            performance_thread.Join(0);
+            performance_thread = null;
+            return;
+        }
+
+        public void getPerformance()
+        {
+            //set up performance counters
+            performance = new List<Performance_Status>();
+            PerformanceCounter ramCounter;
+            PerformanceCounter cpuCounter;
+            float valueRAM;
+            float valueCPU;
+
+            //wait until canRun is triggered
+            while (!canRun)
+                Thread.Sleep(100);
+            isDone = false;
+
+            while (canRun)
+            {
+                //instantiate a new performance counter each loop to prevent caching of values
+                ramCounter = new PerformanceCounter("Memory", "Available MBytes");
+                cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
+
+                //hit up the counter to establish a baseline value
+                ramCounter.NextValue();
+                cpuCounter.NextValue();
+
+                //sleep to give counter time for a difference between the baseline and current, 1 second is recommended
+                Thread.Sleep(1000);
+
+                valueRAM = ramCounter.NextValue();
+                valueCPU = cpuCounter.NextValue();
+
+                //add the new values to the performance counter list
+                performance.Add(new Performance_Status((double)valueRAM, valueCPU));
+
+                ramCounter = null;
+                cpuCounter = null;
+            }
+
+            isDone = true;
+            return;
+        }
+
+        private Thread performance_thread;
+        public List<Performance_Status> performance;
+
+        private bool canRun;
+        private bool isDone;
+
+        public bool isAlive { get { try { return performance_thread.IsAlive; } catch { } return false; } }
+
+        public void start()
+        {
+            canRun = true;
+        }
+        public void stop()
+        {
+            canRun = false;
+        }
+
+        public double getRAMperformance()
+        {
+            if (performance != null && performance.Count > 0)
+                return performance.Select(x => x.RAM).Sum() / (double)performance.Count;
+            else
+                return -1;
+        }
+        public double getCPUperformance()
+        {
+            if (performance != null && performance.Count > 0)
+                return performance.Select(x => x.CPU).Sum() / (double)performance.Count;
+            else
+                return -1;
+        }
+    }
+
+    public class Performance_Status
+    {
+        public Performance_Status(double RAM, double CPU)
+        {
+            this.RAM = RAM;
+            this.CPU = CPU;
+        }
+
+        public double RAM { get; set; }
+        public double CPU { get; set; }
+
+        public override string ToString()
+        {
+            return this.RAM + "," + this.CPU;
+        }
+    }
+}
